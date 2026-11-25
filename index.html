@@ -41,20 +41,41 @@
       </div>
 
       <div class="top-controls">
-        <div class="stats-pill" title="Score de la session">
-          <div class="stat-item">
-            <span class="stat-label">Trouvées</span>
-            <span class="stat-value" id="foundCount">0</span>
-          </div>
-          <div class="stat-divider"></div>
-          <div class="stat-item">
-            <span class="stat-label">Série</span>
-            <span class="stat-value streak-val" id="streakCount">0</span>
+        <!-- Compteurs + infobulle de record au clic/survol -->
+        <div class="stats-wrap">
+          <button type="button" id="statsPillBtn" class="stats-pill" aria-expanded="false" aria-controls="recordPanel" title="Clique pour voir ton record de série">
+            <span class="stat-item">
+              <span class="stat-label">Trouvées</span>
+              <span class="stat-value" id="foundCount">0</span>
+            </span>
+            <span class="stat-divider" aria-hidden="true"></span>
+            <span class="stat-item">
+              <span class="stat-label">Série</span>
+              <span class="stat-value streak-val" id="streakCount">0</span>
+            </span>
+          </button>
+
+          <div id="recordPanel" class="record-panel" role="dialog" aria-label="Record de série" hidden>
+            <div class="record-trophy" aria-hidden="true">🏆</div>
+            <div class="record-text">
+              <span class="record-label">Meilleure série</span>
+              <strong class="record-val"><span id="bestStreakVal">0</span> <span id="bestStreakUnit">chanson</span></strong>
+            </div>
           </div>
         </div>
 
+        <!-- Bouton Notice / Règles -->
+        <button type="button" id="helpToggleBtn" class="icon-pill-btn" aria-label="Règles et notice du jeu" title="Règles et aide">
+          <svg class="icon-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </button>
+
+        <!-- Bouton et panneau audio -->
         <div class="sound-menu-wrap">
-          <button type="button" id="soundToggleBtn" class="icon-pill-btn" aria-label="Réglages du son" aria-expanded="false" aria-controls="soundPanel">
+          <button type="button" id="soundToggleBtn" class="icon-pill-btn" aria-label="Réglages du son" aria-expanded="false" aria-controls="soundPanel" title="Réglages audio">
             <svg class="icon-sound" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
               <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
@@ -63,7 +84,6 @@
             <span class="sound-dot" id="soundStatusDot"></span>
           </button>
 
-          <!-- Panneau flottant des réglages audio -->
           <div id="soundPanel" class="sound-panel" role="dialog" aria-label="Paramètres audio" hidden>
             <div class="sound-panel-header">
               <span>Réglages audio</span>
@@ -115,7 +135,7 @@
       </div>
     </header>
 
-    <!-- Filtre de difficulté et progression -->
+    <!-- Filtre de difficulté, progression & bouton Mot perso -->
     <section class="controls-strip" aria-label="Difficulté et progression">
       <div class="difficulty-bar" id="diffBar" role="tablist" aria-label="Niveau de difficulté">
         <div class="diff-indicator" id="diffIndicator" aria-hidden="true"></div>
@@ -131,13 +151,22 @@
         </div>
         <div class="progress-meta">
           <span id="progressText">0 / 0 mots tirés</span>
-          <button type="button" id="resetDeckBtn" class="text-icon-btn" title="Réinitialiser la pioche">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="1 4 1 10 7 10"></polyline>
-              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-            </svg>
-            <span>Réinitialiser</span>
-          </button>
+          <div class="progress-actions">
+            <button type="button" id="customWordBtn" class="btn-custom-pill" title="Proposer ton propre mot">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>Mot perso</span>
+            </button>
+            <button type="button" id="resetDeckBtn" class="text-icon-btn" title="Réinitialiser la pioche">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="1 4 1 10 7 10"></polyline>
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+              </svg>
+              <span>Réinitialiser</span>
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -167,10 +196,10 @@
           <div class="word-center">
             <p class="word-prompt" id="wordPrompt">Prête à trouver la bonne chanson ?</p>
             <h2 class="current-word" id="currentWord">Mélomot</h2>
-            <p class="word-hint" id="wordHint">Tire un mot au hasard, chantonne un passage ou vérifie un titre.</p>
+            <p class="word-hint" id="wordHint">Tire un mot au hasard, propose ton propre mot ou vérifie un titre.</p>
           </div>
 
-          <!-- Bouton de démarrage (permet d'activer proprement l'audio sur mobile) -->
+          <!-- Bouton de démarrage -->
           <div class="card-actions" id="startActions">
             <button type="button" id="startDrawBtn" class="btn btn-primary btn-large">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -193,54 +222,41 @@
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
               </svg>
-              <span>Voir les réponses</span>
+              <span>Voir des réponses</span>
             </button>
           </div>
         </article>
       </div>
 
-      <!-- Vérificateur optionnel (accordéon fluide) -->
-      <section class="verifier-section" id="verifierSection" hidden>
-        <button type="button" id="verifierToggleBtn" class="verifier-toggle" aria-expanded="false" aria-controls="verifierBody">
-          <span class="verifier-toggle-left">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <span>Un doute ? Vérifier une chanson</span>
-          </span>
-          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </button>
-
-        <div class="collapsible" id="verifierBody">
-          <div class="collapsible-inner">
-            <div class="verifier-content">
-              <form id="verifierForm" class="verifier-form" autocomplete="off">
-                <div class="search-input-wrap">
-                  <input
-                    type="text"
-                    id="verifierInput"
-                    placeholder="Titre, artiste ou bout de paroles..."
-                    aria-label="Titre, artiste ou bout de paroles"
-                  >
-                  <button type="button" id="clearVerifierBtn" class="input-icon-btn" aria-label="Effacer" hidden>&times;</button>
-                  <button type="button" id="micBtn" class="input-icon-btn mic-btn" title="Dicter à la voix" aria-label="Dicter à la voix">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                      <line x1="12" y1="19" x2="12" y2="23"></line>
-                    </svg>
-                  </button>
-                </div>
-                <button type="submit" id="verifySubmitBtn" class="btn btn-primary btn-compact">Vérifier</button>
-              </form>
-
-              <p class="mic-status" id="micStatus" hidden></p>
-              <div id="verifierResult" class="verifier-result" aria-live="polite"></div>
+      <!-- Vérificateur toujours visible et compact -->
+      <section class="verifier-section" id="verifierSection" aria-label="Vérifier une chanson" hidden>
+        <div class="verifier-content">
+          <form id="verifierForm" class="verifier-form" autocomplete="off">
+            <div class="search-input-wrap">
+              <svg class="search-lead-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                type="text"
+                id="verifierInput"
+                placeholder="Un doute ? Vérifier un titre, un artiste ou des paroles..."
+                aria-label="Vérifier un titre, un artiste ou des paroles"
+              >
+              <button type="button" id="clearVerifierBtn" class="input-icon-btn" aria-label="Effacer" hidden>&times;</button>
+              <button type="button" id="micBtn" class="input-icon-btn mic-btn" title="Dicter à la voix" aria-label="Dicter à la voix">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                  <line x1="12" y1="19" x2="12" y2="23"></line>
+                </svg>
+              </button>
             </div>
-          </div>
+            <button type="submit" id="verifySubmitBtn" class="btn btn-primary btn-compact">Vérifier</button>
+          </form>
+
+          <p class="mic-status" id="micStatus" hidden></p>
+          <div id="verifierResult" class="verifier-result" aria-live="polite"></div>
         </div>
       </section>
 
@@ -248,10 +264,13 @@
       <section class="answers-section" id="answersSection" hidden>
         <div class="answers-header">
           <h3>Idées avec « <span id="answersWordLabel"></span> »</h3>
-          <span class="answers-tip">Clique sur Play pour écouter un extrait</span>
+          <span class="answers-tip">Clique sur Extrait pour écouter</span>
         </div>
 
         <div class="answers-list" id="answersList"></div>
+
+        <!-- Bouton de secours Google pour les mots perso -->
+        <div id="answersExtraBox" class="answers-extra-box" hidden></div>
 
         <div class="answers-footer">
           <button type="button" id="btnFoundAnyway" class="btn btn-soft">
@@ -274,6 +293,109 @@
     <footer class="app-footer">
       <p>Mélomot • Extraits audio via iTunes &amp; vérification des paroles via LRCLIB</p>
     </footer>
+  </div>
+
+  <!-- Modale Mot perso -->
+  <div class="modal-backdrop" id="customWordModal" role="dialog" aria-modal="true" aria-labelledby="customModalTitle" hidden>
+    <div class="modal-card modal-custom">
+      <div class="modal-header-row">
+        <h3 id="customModalTitle">Proposer un mot perso</h3>
+        <button type="button" id="closeCustomWordModalBtn" class="mini-close-btn" aria-label="Fermer">&times;</button>
+      </div>
+      <p class="modal-desc">Écris le mot qui te passe par la tête pour lancer une manche personnalisée.</p>
+      <form id="customWordForm" class="custom-word-form" autocomplete="off">
+        <input
+          type="text"
+          id="customWordInput"
+          class="modal-input"
+          placeholder="Ex : Boussole, Orage, Velours..."
+          maxlength="40"
+          aria-label="Ton mot personnalisé"
+          required
+        >
+        <div class="modal-actions-row">
+          <button type="button" id="cancelCustomWordBtn" class="btn btn-soft btn-compact">Annuler</button>
+          <button type="submit" class="btn btn-primary btn-compact">Lancer ce mot</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modale Notice / Règles (3 onglets) -->
+  <div class="modal-backdrop" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle" hidden>
+    <div class="modal-card modal-help">
+      <div class="modal-header-row">
+        <div class="help-title-wrap">
+          <span class="help-badge-icon" aria-hidden="true">🎵</span>
+          <h3 id="helpModalTitle">Guide Mélomot</h3>
+        </div>
+        <button type="button" id="closeHelpModalBtn" class="mini-close-btn" aria-label="Fermer">&times;</button>
+      </div>
+
+      <div class="help-tabs" role="tablist" aria-label="Sections du guide">
+        <div class="help-tab-indicator" id="helpTabIndicator" aria-hidden="true"></div>
+        <button type="button" class="help-tab-btn is-active" data-tab="rules" role="tab" aria-selected="true">Règles</button>
+        <button type="button" class="help-tab-btn" data-tab="tools" role="tab" aria-selected="false">Vérifier &amp; Audio</button>
+        <button type="button" class="help-tab-btn" data-tab="custom" role="tab" aria-selected="false">Mot perso</button>
+      </div>
+
+      <div class="help-panels">
+        <!-- Onglet 1 : Règles -->
+        <div class="help-panel is-active" id="helpTabRules" role="tabpanel">
+          <ul class="help-list">
+            <li>
+              <strong>Le but :</strong> tire un mot et trouve une chanson française qui l'utilise dans ses <strong>paroles</strong> (le pluriel, le féminin et les conjugaisons comptent !).
+            </li>
+            <li>
+              <strong>Auto-validation :</strong> chantonne le passage à voix haute puis clique sur <strong>J'ai trouvé !</strong> pour enchaîner, ou sur <strong>Voir des réponses</strong> si tu sèches.
+            </li>
+            <li>
+              <strong>Anti-doublon :</strong> un mot tiré ne retombe pas tant que la pioche n'est pas terminée ou réinitialisée.
+            </li>
+          </ul>
+          <div class="help-record-box">
+            <span>🏆 Ton record local sur cet appareil :</span>
+            <strong id="helpBestStreak">0 chanson</strong>
+          </div>
+        </div>
+
+        <!-- Onglet 2 : Vérifier & Audio -->
+        <div class="help-panel" id="helpTabTools" role="tabpanel" hidden>
+          <ul class="help-list">
+            <li>
+              <strong>Vérifier une chanson :</strong> tape ou dicte au micro un titre, un artiste ou un bout de paroles. Le jeu choisit toujours en priorité une chanson contenant le mot.
+            </li>
+            <li>
+              <strong>Pastilles de suggestion :</strong>
+              <span class="legend-inline"><span class="cand-dot is-match"></span> mot détecté dans les paroles</span> •
+              <span class="legend-inline"><span class="cand-dot is-nomatch"></span> non détecté</span>.
+            </li>
+            <li>
+              <strong>Paroles &amp; Extraits :</strong> utilise les petites flèches <code>‹ 1/3 ›</code> pour voir d'autres passages du mot, clique sur <strong>Extrait</strong> pour écouter 30s, et règle séparément la voix et la musique dans l'icône son.
+            </li>
+          </ul>
+        </div>
+
+        <!-- Onglet 3 : Mot perso & Limites -->
+        <div class="help-panel" id="helpTabCustom" role="tabpanel" hidden>
+          <ul class="help-list">
+            <li>
+              <strong>Lancer ton propre mot :</strong> clique sur <strong>+ Mot perso</strong> pour jouer avec le mot de ton choix sans toucher à ta progression.
+            </li>
+            <li>
+              <strong>Réponses en mode perso :</strong> le jeu cherche automatiquement des titres correspondants et propose un bouton <strong>Google Paroles</strong> en filet de sécurité si vous séchez.
+            </li>
+            <li>
+              <strong>Bon à savoir :</strong> le micro fonctionne en <strong>dictée parlée</strong> (titre, artiste ou phrase récitée), mais ne reconnaît pas une mélodie fredonnée. En cas de chanson absente de la base, le bouton <em>Valider quand même</em> évite tout blocage.
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="help-footer">
+        <button type="button" id="helpOkBtn" class="btn btn-primary btn-compact">C'est parti !</button>
+      </div>
+    </div>
   </div>
 
   <!-- Modale de fin de pioche -->
