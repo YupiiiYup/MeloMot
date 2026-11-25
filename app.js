@@ -1698,7 +1698,7 @@ async function handleVerifySubmit(e) {
 
   const query = dom.verifierInput.value.trim();
   if (!query) {
-    showToast("Entre un titre, un artiste ou un bout de paroles.");
+    showToast("Entre un titre et/ou un artiste");
     dom.verifierInput.focus();
     return;
   }
@@ -1918,7 +1918,7 @@ function setupDictation() {
     state.isListening = true;
     dom.micBtn.classList.add("is-listening");
     dom.micStatus.hidden = false;
-    dom.micStatus.textContent = "Écoute en cours... Dicte le titre, l'artiste ou un bout de paroles.";
+    dom.micStatus.textContent = "Écoute en cours... Dicte le titre et/ou l'artiste.";
   };
 
   rec.onresult = (event) => {
