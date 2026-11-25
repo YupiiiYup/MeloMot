@@ -1,5 +1,5 @@
 // =========================================================
-// MÉLOMOT V1.1 — Logique du jeu (Bloc 1/2)
+// MÉLOMOT V1.1.1 — Logique du jeu (Bloc 1/2)
 // Thèmes pastel, Audio/Voix, Paroles 3 lignes & APIs filtrées
 // =========================================================
 
@@ -131,6 +131,7 @@ const state = {
   answersRevealed: false,
   foundCount: 0,
   streakCount: 0,
+  streakBeforeReveal: null,
   bestStreak: 0,
   drawnWords: new Set(),
   lastThemeIndex: -1,
@@ -607,35 +608,66 @@ function bindGlobalAudioEvents() {
   });
 }
 
-// --- Détection intelligente du mot & Paroles sur 3 lignes (multi-occurrences) ---
+// --- Détection intelligente du mot français & Paroles sur 3 lignes ---
 
-const ER_VERB_ENDINGS = /^(e|es|ent|ons|eons|ez|ais|ait|ions|iez|aient|erai|eras|era|erons|erez|eront|erais|erait|erions|eriez|eraient|ant|ee|ees|er)$/;
+const ER_VERB_ENDINGS = /^(e|es|ent|ons|eons|ez|ais|ait|ions|iez|aient|a|as|erent|erai|eras|era|erons|erez|eront|erais|erait|erions|eriez|eraient|ant|ee|ees|er)$/;
+const IR_VERB_ENDINGS = /^(is|it|issons|issez|issent|issais|issait|issions|issiez|issaient|irai|iras|ira|irons|irez|iront|irais|irait|irions|iriez|iraient|issant|i|ie|ies|ir)$/;
 
 const IRREGULAR_WORD_FAMILIES = {
-  vivre: ["vivre", "vis", "vit", "vivons", "vivez", "vivent", "vivais", "vivait", "vivaient", "vivrai", "vivra", "vecu", "vivant"],
+  vivre: ["vivre", "vis", "vit", "vivons", "vivez", "vivent", "vivais", "vivait", "vivaient", "vivrai", "vivra", "vecu", "vecue", "vivant", "vivante"],
   mourir: ["mourir", "meurs", "meurt", "mourons", "mourez", "meurent", "mourais", "mourait", "mourrai", "mourra", "mort", "morte", "morts", "mortes", "mourant"],
-  partir: ["partir", "pars", "part", "partons", "partez", "partent", "partais", "partait", "partirai", "partira", "parti", "partie", "partis", "partant"],
-  savoir: ["savoir", "sais", "sait", "savons", "savez", "savent", "savais", "savait", "saurai", "saura", "sachant"],
-  voir: ["voir", "vois", "voit", "voyons", "voyez", "voient", "voyais", "voyait", "verrai", "verras", "verra", "vu", "vue", "vus"],
-  prendre: ["prendre", "prends", "prend", "prenons", "prenez", "prennent", "prenais", "prenait", "prendrai", "prendra", "pris", "prise", "prenant"],
+  partir: ["partir", "pars", "part", "partons", "partez", "partent", "partais", "partait", "partirai", "partira", "parti", "partie", "partis", "parties", "partant"],
+  savoir: ["savoir", "sais", "sait", "savons", "savez", "savent", "savais", "savait", "saurai", "saura", "sauras", "su", "sachant"],
+  voir: ["voir", "vois", "voit", "voyons", "voyez", "voient", "voyais", "voyait", "verrai", "verras", "verra", "verrons", "vu", "vue", "vus", "vues", "voyant"],
+  prendre: ["prendre", "prends", "prend", "prenons", "prenez", "prennent", "prenais", "prenait", "prendrai", "prendra", "pris", "prise", "prises", "prenant"],
   courir: ["courir", "cours", "court", "courons", "courez", "courent", "courais", "courait", "courrai", "courra", "couru", "courant"],
-  attendre: ["attendre", "attends", "attend", "attendons", "attendez", "attendent", "attendais", "attendait", "attendrai", "attendra", "attendu", "attendant"],
-  perdre: ["perdre", "perds", "perd", "perdons", "perdez", "perdent", "perdais", "perdit", "perdrai", "perdra", "perdu", "perdue", "perdus", "perdant"],
+  attendre: ["attendre", "attends", "attend", "attendons", "attendez", "attendent", "attendais", "attendait", "attendrai", "attendra", "attendu", "attendue", "attendant"],
+  perdre: ["perdre", "perds", "perd", "perdons", "perdez", "perdent", "perdais", "perdit", "perdrai", "perdra", "perdu", "perdue", "perdus", "perdues", "perdant"],
+  faire: ["faire", "fais", "fait", "faisons", "faites", "font", "faisais", "faisait", "faisaient", "ferai", "feras", "fera", "ferons", "feront", "ferais", "ferait", "faisant", "faite", "faits", "faites"],
+  dire: ["dire", "dis", "dit", "disons", "dites", "disent", "disais", "disait", "disaient", "dirai", "diras", "dira", "dirais", "dirait", "disant", "dite", "dits"],
+  venir: ["venir", "viens", "vient", "venons", "venez", "viennent", "venais", "venait", "venaient", "viendrai", "viendras", "viendra", "viendront", "venu", "venue", "venus", "venues", "venant"],
+  revenir: ["revenir", "reviens", "revient", "revenons", "revenez", "reviennent", "revenais", "revenait", "reviendrai", "reviendra", "revenu", "revenue", "revenus", "revenant"],
+  devenir: ["devenir", "deviens", "devient", "devenons", "devenez", "deviennent", "devenais", "devenait", "deviendrai", "deviendra", "devenu", "devenue", "devenus", "devenant"],
+  croire: ["croire", "crois", "croit", "croyons", "croyez", "croient", "croyais", "croyait", "croyaient", "croirai", "croira", "croirais", "cru", "crue", "croyant"],
+  rire: ["rire", "ris", "rit", "rions", "riez", "rient", "riais", "riait", "riaient", "rirai", "rira", "riant", "rires"],
+  sourire: ["sourire", "souris", "sourit", "sourions", "souriez", "sourient", "souriais", "souriait", "sourirai", "sourira", "souriant", "sourires"],
+  dormir: ["dormir", "dors", "dort", "dormons", "dormez", "dorment", "dormais", "dormait", "dormaient", "dormirai", "dormira", "dormi", "dormant"],
+  sortir: ["sortir", "sors", "sort", "sortons", "sortez", "sortent", "sortais", "sortait", "sortirai", "sortira", "sorti", "sortie", "sortis", "sorties", "sortant"],
+  boire: ["boire", "bois", "boit", "buvons", "buvez", "boivent", "buvais", "buvait", "boirai", "boira", "bu", "bue", "buvant"],
+  ecrire: ["ecrire", "ecris", "ecrit", "ecrivons", "ecrivez", "ecrivent", "ecrivais", "ecrivait", "ecrirai", "ecrira", "ecrite", "ecrits", "ecrites", "ecrivant"],
+  lire: ["lire", "lis", "lit", "lisons", "lisez", "lisent", "lisais", "lisait", "lirai", "lira", "lu", "lue", "lisant"],
+  tenir: ["tenir", "tiens", "tient", "tenons", "tenez", "tiennent", "tenais", "tenait", "tiendrai", "tiendra", "tenu", "tenue", "tenant"],
+  ouvrir: ["ouvrir", "ouvre", "ouvres", "ouvrons", "ouvrez", "ouvrent", "ouvrais", "ouvrait", "ouvrirai", "ouvrira", "ouvert", "ouverte", "ouverts", "ouvertes", "ouvrant"],
+  vouloir: ["vouloir", "veux", "veut", "voulons", "voulez", "veulent", "voulais", "voulait", "voudrai", "voudras", "voudra", "voudrais", "voudrait", "voulu", "voulant"],
+  pouvoir: ["pouvoir", "peux", "peut", "pouvons", "pouvez", "peuvent", "pouvais", "pouvait", "pourrai", "pourras", "pourra", "pourrais", "pourrait", "pu", "pouvant"],
+  aller: ["aller", "vais", "vas", "va", "allons", "allez", "vont", "allais", "allait", "allaient", "irai", "iras", "ira", "irons", "iront", "irais", "irait", "alle", "allee", "alles", "allant"],
+  mettre: ["mettre", "mets", "met", "mettons", "mettez", "mettent", "mettais", "mettait", "mettrai", "mettra", "mis", "mise", "mises", "mettant"],
+  sentir: ["sentir", "sens", "sent", "sentons", "sentez", "sentent", "sentais", "sentait", "sentirai", "sentira", "senti", "sentie", "sentant"],
+  suivre: ["suivre", "suis", "suit", "suivons", "suivez", "suivent", "suivais", "suivait", "suivrai", "suivra", "suivi", "suivie", "suivant"],
+  connaitre: ["connaitre", "connais", "connait", "connaissons", "connaissez", "connaissent", "connaissais", "connaissait", "connaitrai", "connu", "connue", "connus"],
   yeux: ["yeux", "oeil"],
+  oeil: ["oeil", "yeux"],
   cheval: ["cheval", "chevaux"],
   ciel: ["ciel", "cieux"],
-  beau: ["beau", "belle", "beaux", "belles"],
-  belle: ["belle", "belles", "beau", "beaux"],
-  fou: ["fou", "folle", "fous", "folles"],
+  mal: ["mal", "maux"],
+  travail: ["travail", "travaux", "travailler", "travaille", "travailles", "travaillent"],
+  beau: ["beau", "belle", "beaux", "belles", "bel"],
+  belle: ["belle", "belles", "beau", "beaux", "bel"],
+  bon: ["bon", "bonne", "bons", "bonnes"],
+  fou: ["fou", "folle", "fous", "folles", "fol"],
+  doux: ["doux", "douce", "douces"],
+  blanc: ["blanc", "blanche", "blancs", "blanches"],
+  long: ["long", "longue", "longs", "longues"],
   vieux: ["vieux", "vieille", "vieilles", "vieil"],
-  nouveau: ["nouveau", "nouvelle", "nouveaux", "nouvelles"],
-  liberte: ["liberte", "liberee", "liberees", "libere", "libre", "libres"]
+  nouveau: ["nouveau", "nouvelle", "nouveaux", "nouvelles", "nouvel"],
+  liberte: ["liberte", "libertes", "liberee", "liberees", "libere", "libre", "libres"]
 };
 
 function matchesFrenchWord(normToken, normTarget) {
   if (!normToken || !normTarget) return false;
   if (normToken === normTarget) return true;
 
+  // Pluriels et féminins standards (-s, -x, -e, -es)
   if (
     normToken === normTarget + "s" ||
     normToken === normTarget + "x" ||
@@ -645,15 +677,67 @@ function matchesFrenchWord(normToken, normTarget) {
     return true;
   }
 
+  // Familles irrégulières connues
   if (IRREGULAR_WORD_FAMILIES[normTarget] && IRREGULAR_WORD_FAMILIES[normTarget].includes(normToken)) {
     return true;
   }
 
+  // Pluriels en -al <-> -aux (journal/journaux, cristal/cristaux...)
+  if (normTarget.length >= 4 && normTarget.endsWith("al")) {
+    if (normToken === normTarget.slice(0, -2) + "aux") return true;
+  }
+  if (normTarget.length >= 5 && normTarget.endsWith("aux")) {
+    if (normToken === normTarget.slice(0, -3) + "al") return true;
+  }
+
+  // Féminins en -eux <-> -euse / -euses (heureux/heureuse, amoureux/amoureuse...)
+  if (normTarget.length >= 4 && normTarget.endsWith("eux")) {
+    const base = normTarget.slice(0, -1);
+    if (normToken === base + "se" || normToken === base + "ses") return true;
+  }
+
+  // Féminins en -eur <-> -euse / -rice (chanteur/chanteuse, danseur/danseuse...)
+  if (normTarget.length >= 5 && normTarget.endsWith("eur")) {
+    const base = normTarget.slice(0, -3);
+    if (
+      normToken === base + "euse" ||
+      normToken === base + "euses" ||
+      normToken === base + "rice" ||
+      normToken === base + "rices"
+    ) {
+      return true;
+    }
+  }
+
+  // Féminins en -if <-> -ive / -ives (vif/vive, captif/captive...)
+  if (normTarget.length >= 4 && normTarget.endsWith("if")) {
+    const base = normTarget.slice(0, -1);
+    if (normToken === base + "ve" || normToken === base + "ves") return true;
+  }
+
+  // Féminins en -ien <-> -ienne / -iennes et -el <-> -elle / -elles
+  if (normTarget.length >= 4 && normTarget.endsWith("ien")) {
+    if (normToken === normTarget + "ne" || normToken === normTarget + "nes") return true;
+  }
+  if (normTarget.length >= 4 && normTarget.endsWith("el")) {
+    if (normToken === normTarget + "le" || normToken === normTarget + "les") return true;
+  }
+
+  // Verbes réguliers du 1er groupe (-er)
   if (normTarget.length >= 5 && normTarget.endsWith("er")) {
     const stem = normTarget.slice(0, -2);
     if (normToken.startsWith(stem)) {
       const rest = normToken.slice(stem.length);
       if (ER_VERB_ENDINGS.test(rest)) return true;
+    }
+  }
+
+  // Verbes réguliers du 2e groupe (-ir : finir, grandir, fleurir...)
+  if (normTarget.length >= 5 && normTarget.endsWith("ir")) {
+    const stem = normTarget.slice(0, -2);
+    if (normToken.startsWith(stem)) {
+      const rest = normToken.slice(stem.length);
+      if (IR_VERB_ENDINGS.test(rest)) return true;
     }
   }
 
@@ -666,7 +750,6 @@ function findAllMatchingLyricSnippets(plainLyrics, targetWord) {
   const normTarget = normalizeStr(targetWord).trim();
   const isMultiWordTarget = /\s+/.test(normTarget);
 
-  // Nettoie les lignes vides et balises structurelles type [Refrain]
   const lines = plainLyrics
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -706,12 +789,10 @@ function findAllMatchingLyricSnippets(plainLyrics, targetWord) {
     const prevLine = i > 0 ? lines[i - 1] : "";
     const nextLine = i < lines.length - 1 ? lines[i + 1] : "";
 
-    // Évite les doublons exacts quand un refrain se répète à l'identique
     const dedupeKey = normalizeStr(`${prevLine}|${line}|${nextLine}`).replace(/[^a-z0-9|]/g, "");
     if (seenKeys.has(dedupeKey)) continue;
     seenKeys.add(dedupeKey);
 
-    // Score de richesse contextuelle pour afficher le meilleur passage en premier
     const wordCount = line.split(/\s+/).filter(Boolean).length;
     let score = Math.min(wordCount, 12) * 3;
     if (wordCount >= 4) score += 20;
@@ -723,7 +804,6 @@ function findAllMatchingLyricSnippets(plainLyrics, targetWord) {
     occurrences.push({ prevLine, mainHtml, nextLine, score });
   }
 
-  // Trie pour mettre en premier les phrases les plus parlantes
   occurrences.sort((a, b) => b.score - a.score);
   return occurrences;
 }
@@ -790,7 +870,6 @@ function makeSongDedupeKey(title, artist) {
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-  // Trie les mots du nom d'artiste : "Sardou, Michel" et "Michel Sardou" donnent la même clé
   const artistTokens = normalizeStr(artist)
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
@@ -836,7 +915,6 @@ async function fetchItunesTrack(title, artist) {
       let score = 0;
       if (r.previewUrl) score += 35;
 
-      // Pénalise fortement karaokés, reprises, berceuses et compilations tribute
       if (!queryWantsSpecial && UNWANTED_TRACK_RE.test(combined)) {
         score -= 120;
       }
@@ -849,7 +927,7 @@ async function fetchItunesTrack(title, artist) {
         let matchedArtistTokens = 0;
         for (const tok of artistTokens) {
           if (rArtist.includes(tok)) matchedArtistTokens += 2;
-          else if (rAlbum.includes(tok)) matchedArtistTokens += 1; // Utile pour Disney / Comédies musicales
+          else if (rAlbum.includes(tok)) matchedArtistTokens += 1;
         }
         score += matchedArtistTokens * 14;
       }
@@ -951,8 +1029,6 @@ function buildDeduplicatedCandidates(lrcResults, targetWord, maxRaw = 20) {
     const matched = occurrences.length > 0;
     const dedupeKey = makeSongDedupeKey(trackName, artistName);
     const topScore = matched ? occurrences[0].score : 0;
-
-    // Préfère un nom d'artiste sans virgule inversée ("Michel Sardou" > "Sardou, Michel")
     const nameCleanBonus = artistName.includes(",") ? 0 : 5;
 
     const existing = map.get(dedupeKey);
@@ -986,7 +1062,6 @@ function buildDeduplicatedCandidates(lrcResults, targetWord, maxRaw = 20) {
   }
 
   const list = Array.from(map.values());
-  // Priorité absolue aux titres contenant le mot, puis qualité du passage
   list.sort((a, b) => {
     if (a.matched !== b.matched) return a.matched ? -1 : 1;
     return b.topScore - a.topScore;
@@ -1008,7 +1083,7 @@ async function fetchLyricOccurrencesForSong(title, artist, targetWord) {
   return bestOccurrences;
 }
 // =========================================================
-// MÉLOMOT V1.1 — Logique du jeu (Bloc 2/2)
+// MÉLOMOT V1.1.1 — Logique du jeu (Bloc 2/2)
 // Pioche, Mot perso, Guide, Record, Vérificateur & Micro
 // =========================================================
 
@@ -1021,6 +1096,14 @@ const DIFF_LABELS = {
 
 let isTransitioningWord = false;
 let currentWordScored = false;
+let nextWordTimer = null;
+
+function clearPendingNextWord() {
+  if (nextWordTimer) {
+    clearTimeout(nextWordTimer);
+    nextWordTimer = null;
+  }
+}
 
 // --- Gestion de la pioche, des scores & du record ---
 
@@ -1080,6 +1163,7 @@ function setDifficulty(diff, shouldDrawIfStarted = true) {
     return;
   }
 
+  clearPendingNextWord();
   state.currentDiff = diff;
   const idx = dom.diffBtns.findIndex((btn) => btn.dataset.diff === diff);
   dom.diffBtns.forEach((btn, i) => {
@@ -1106,6 +1190,7 @@ function setDifficulty(diff, shouldDrawIfStarted = true) {
 }
 
 function resetDeckForCurrentDiff() {
+  clearPendingNextWord();
   const pool = getPoolByDiff(state.currentDiff);
   pool.forEach((item) => state.drawnWords.delete(item.word));
   saveDrawnState();
@@ -1165,6 +1250,7 @@ function setHelpTab(tabKey) {
 }
 
 function openCustomWordModal() {
+  clearPendingNextWord();
   toggleSoundPanel(false);
   toggleRecordPanel(false);
   dom.customWordInput.value = "";
@@ -1206,8 +1292,10 @@ function resetVerifierUI() {
 function presentWordObject(wordObj) {
   if (isTransitioningWord) return;
 
+  clearPendingNextWord();
   isTransitioningWord = true;
   currentWordScored = false;
+  state.streakBeforeReveal = null;
   state.revealToken++;
   stopAllAudio();
   resetVerifierUI();
@@ -1269,6 +1357,7 @@ function presentWordObject(wordObj) {
 
 function drawNextWord() {
   if (isTransitioningWord) return;
+  clearPendingNextWord();
 
   const remaining = getRemainingByDiff(state.currentDiff);
   if (remaining.length === 0) {
@@ -1312,6 +1401,13 @@ function handleWordFound(fromAnswers = false) {
   if (!state.currentWordObj || isTransitioningWord || currentWordScored) return;
 
   currentWordScored = true;
+
+  // Restaure la série en cours si l'utilisateur valide après avoir ouvert les réponses
+  if (state.answersRevealed && state.streakBeforeReveal !== null) {
+    state.streakCount = state.streakBeforeReveal;
+  }
+  state.streakBeforeReveal = null;
+
   state.foundCount += 1;
   state.streakCount += 1;
 
@@ -1340,7 +1436,9 @@ function handleWordFound(fromAnswers = false) {
     showToast("Point validé !");
   }
 
-  setTimeout(() => {
+  clearPendingNextWord();
+  nextWordTimer = setTimeout(() => {
+    nextWordTimer = null;
     drawNextWord();
   }, 460);
 }
@@ -1348,7 +1446,9 @@ function handleWordFound(fromAnswers = false) {
 async function handleRevealAnswers() {
   if (!state.currentWordObj || state.answersRevealed) return;
 
+  clearPendingNextWord();
   state.answersRevealed = true;
+  state.streakBeforeReveal = state.streakCount;
   state.streakCount = 0;
   updateStatsUI(false, false);
 
@@ -1628,7 +1728,6 @@ async function handleVerifySubmit(e) {
       return;
     }
 
-    // candidates[0] est toujours un titre contenant le mot s'il en existe au moins un
     await renderVerifierCandidate(candidates, 0, targetWord, token);
   } catch (err) {
     if (token !== state.verifyToken) return;
@@ -1654,7 +1753,6 @@ async function renderVerifierCandidate(candidates, selectedIdx, targetWord, toke
     ? `<div class="lyric-quote"></div>`
     : `<p class="verifier-msg">Le mot exact n'a pas été détecté dans le texte récupéré. Tu peux tester une autre chanson ci-dessous ou valider si tu sais qu'il y figure.</p>`;
 
-  // Jusqu'à 4 autres chansons distinctes : pastilles vertes en premier, complétées par orange si besoin
   const otherCandidates = candidates
     .map((c, i) => ({ ...c, origIdx: i }))
     .filter((c) => c.origIdx !== selectedIdx)
