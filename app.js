@@ -1,6 +1,6 @@
 // =========================================================
-// MÉLOMOT — Logique du jeu (Bloc 1/2)
-// Thèmes pastel, Audio/Voix, Effets visuels & APIs gratuites
+// MÉLOMOT V1.1 — Logique du jeu (Bloc 1/2)
+// Thèmes pastel, Audio/Voix, Paroles 3 lignes & APIs filtrées
 // =========================================================
 
 const PASTEL_THEMES = [
@@ -120,7 +120,8 @@ const PASTEL_THEMES = [
 
 const STORAGE_KEYS = {
   drawn: "melomot_drawn_v1",
-  sound: "melomot_sound_v1"
+  sound: "melomot_sound_v1",
+  bestStreak: "melomot_best_streak_v1"
 };
 
 const state = {
@@ -130,6 +131,7 @@ const state = {
   answersRevealed: false,
   foundCount: 0,
   streakCount: 0,
+  bestStreak: 0,
   drawnWords: new Set(),
   lastThemeIndex: -1,
   revealToken: 0,
@@ -157,8 +159,25 @@ const dom = {
   fxCanvas: document.getElementById("fxCanvas"),
   toastContainer: document.getElementById("toastContainer"),
 
+  statsPillBtn: document.getElementById("statsPillBtn"),
   foundCount: document.getElementById("foundCount"),
   streakCount: document.getElementById("streakCount"),
+  recordPanel: document.getElementById("recordPanel"),
+  bestStreakVal: document.getElementById("bestStreakVal"),
+  bestStreakUnit: document.getElementById("bestStreakUnit"),
+
+  helpToggleBtn: document.getElementById("helpToggleBtn"),
+  helpModal: document.getElementById("helpModal"),
+  closeHelpModalBtn: document.getElementById("closeHelpModalBtn"),
+  helpTabIndicator: document.getElementById("helpTabIndicator"),
+  helpTabBtns: Array.from(document.querySelectorAll(".help-tab-btn")),
+  helpTabPanels: {
+    rules: document.getElementById("helpTabRules"),
+    tools: document.getElementById("helpTabTools"),
+    custom: document.getElementById("helpTabCustom")
+  },
+  helpBestStreak: document.getElementById("helpBestStreak"),
+  helpOkBtn: document.getElementById("helpOkBtn"),
 
   soundToggleBtn: document.getElementById("soundToggleBtn"),
   soundStatusDot: document.getElementById("soundStatusDot"),
@@ -176,6 +195,7 @@ const dom = {
   diffBtns: Array.from(document.querySelectorAll(".diff-btn")),
   progressFill: document.getElementById("progressFill"),
   progressText: document.getElementById("progressText"),
+  customWordBtn: document.getElementById("customWordBtn"),
   resetDeckBtn: document.getElementById("resetDeckBtn"),
 
   wordCard: document.getElementById("wordCard"),
@@ -192,8 +212,6 @@ const dom = {
   btnReveal: document.getElementById("btnReveal"),
 
   verifierSection: document.getElementById("verifierSection"),
-  verifierToggleBtn: document.getElementById("verifierToggleBtn"),
-  verifierBody: document.getElementById("verifierBody"),
   verifierForm: document.getElementById("verifierForm"),
   verifierInput: document.getElementById("verifierInput"),
   clearVerifierBtn: document.getElementById("clearVerifierBtn"),
@@ -205,8 +223,15 @@ const dom = {
   answersSection: document.getElementById("answersSection"),
   answersWordLabel: document.getElementById("answersWordLabel"),
   answersList: document.getElementById("answersList"),
+  answersExtraBox: document.getElementById("answersExtraBox"),
   btnFoundAnyway: document.getElementById("btnFoundAnyway"),
   btnNextWord: document.getElementById("btnNextWord"),
+
+  customWordModal: document.getElementById("customWordModal"),
+  closeCustomWordModalBtn: document.getElementById("closeCustomWordModalBtn"),
+  customWordForm: document.getElementById("customWordForm"),
+  customWordInput: document.getElementById("customWordInput"),
+  cancelCustomWordBtn: document.getElementById("cancelCustomWordBtn"),
 
   deckCompleteModal: document.getElementById("deckCompleteModal"),
   modalTitle: document.getElementById("modalTitle"),
@@ -286,12 +311,17 @@ function loadSavedState() {
     const rawDrawn = localStorage.getItem(STORAGE_KEYS.drawn);
     if (rawDrawn) {
       const list = JSON.parse(rawDrawn);
-      if (Array.isArray(list)) {
-        state.drawnWords = new Set(list);
-      }
+      if (Array.isArray(list)) state.drawnWords = new Set(list);
     }
   } catch (e) {
-    // Ignore storage errors
+    // Ignore
+  }
+
+  try {
+    const rawBest = parseInt(localStorage.getItem(STORAGE_KEYS.bestStreak) || "0", 10);
+    if (!isNaN(rawBest) && rawBest > 0) state.bestStreak = rawBest;
+  } catch (e) {
+    // Ignore
   }
 }
 
@@ -306,6 +336,14 @@ function saveSoundState() {
 function saveDrawnState() {
   try {
     localStorage.setItem(STORAGE_KEYS.drawn, JSON.stringify(Array.from(state.drawnWords)));
+  } catch (e) {
+    // Ignore
+  }
+}
+
+function saveBestStreakState() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.bestStreak, String(state.bestStreak));
   } catch (e) {
     // Ignore
   }
@@ -381,9 +419,7 @@ function launchCelebrationFx() {
     });
   }
 
-  if (!fxAnimId) {
-    animateFxLoop();
-  }
+  if (!fxAnimId) animateFxLoop();
 }
 
 function animateFxLoop() {
@@ -565,18 +601,13 @@ function bindGlobalAudioEvents() {
     if (timeEl) timeEl.textContent = formatTime(player.duration - player.currentTime);
   });
 
-  player.addEventListener("ended", () => {
-    stopAllAudio();
-  });
-
+  player.addEventListener("ended", stopAllAudio);
   player.addEventListener("error", () => {
-    if (state.audio.activeCard) {
-      stopAllAudio();
-    }
+    if (state.audio.activeCard) stopAllAudio();
   });
 }
 
-// --- Détection intelligente du mot dans les paroles françaises ---
+// --- Détection intelligente du mot & Paroles sur 3 lignes (multi-occurrences) ---
 
 const ER_VERB_ENDINGS = /^(e|es|ent|ons|eons|ez|ais|ait|ions|iez|aient|erai|eras|era|erons|erez|eront|erais|erait|erions|eriez|eraient|ant|ee|ees|er)$/;
 
@@ -605,7 +636,6 @@ function matchesFrenchWord(normToken, normTarget) {
   if (!normToken || !normTarget) return false;
   if (normToken === normTarget) return true;
 
-  // Pluriels et féminins standards
   if (
     normToken === normTarget + "s" ||
     normToken === normTarget + "x" ||
@@ -615,12 +645,10 @@ function matchesFrenchWord(normToken, normTarget) {
     return true;
   }
 
-  // Familles irrégulières connues
   if (IRREGULAR_WORD_FAMILIES[normTarget] && IRREGULAR_WORD_FAMILIES[normTarget].includes(normToken)) {
     return true;
   }
 
-  // Verbes réguliers du 1er groupe (-er)
   if (normTarget.length >= 5 && normTarget.endsWith("er")) {
     const stem = normTarget.slice(0, -2);
     if (normToken.startsWith(stem)) {
@@ -632,47 +660,154 @@ function matchesFrenchWord(normToken, normTarget) {
   return false;
 }
 
-function findMatchingLyricSnippet(plainLyrics, targetWord) {
-  if (!plainLyrics || !targetWord) {
-    return { matched: false, lineHtml: "" };
-  }
+function findAllMatchingLyricSnippets(plainLyrics, targetWord) {
+  if (!plainLyrics || !targetWord) return [];
 
   const normTarget = normalizeStr(targetWord).trim();
+  const isMultiWordTarget = /\s+/.test(normTarget);
+
+  // Nettoie les lignes vides et balises structurelles type [Refrain]
   const lines = plainLyrics
     .split(/\r?\n/)
     .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+    .filter((l) => l.length > 0 && !/^\[[^\]]+\]$/.test(l));
 
-  for (const line of lines) {
-    const parts = line.split(/([A-Za-zÀ-ÖØ-öø-ÿœŒæÆ]+)/);
+  const occurrences = [];
+  const seenKeys = new Set();
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     let foundInLine = false;
-    const htmlParts = parts.map((part) => {
-      if (/^[A-Za-zÀ-ÖØ-öø-ÿœŒæÆ]+$/.test(part)) {
-        const normPart = normalizeStr(part);
-        if (matchesFrenchWord(normPart, normTarget)) {
-          foundInLine = true;
-          return `<span class="word-highlight">${escapeHtml(part)}</span>`;
-        }
-      }
-      return escapeHtml(part);
-    });
+    let mainHtml = "";
 
-    if (foundInLine) {
-      return { matched: true, lineHtml: `« ${htmlParts.join("")} »` };
+    if (isMultiWordTarget) {
+      const escapedTarget = targetWord.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`(${escapedTarget})`, "gi");
+      if (normalizeStr(line).includes(normTarget)) {
+        foundInLine = true;
+        mainHtml = escapeHtml(line).replace(re, '<span class="word-highlight">$1</span>');
+      }
+    } else {
+      const parts = line.split(/([A-Za-zÀ-ÖØ-öø-ÿœŒæÆ]+)/);
+      const htmlParts = parts.map((part) => {
+        if (/^[A-Za-zÀ-ÖØ-öø-ÿœŒæÆ]+$/.test(part)) {
+          if (matchesFrenchWord(normalizeStr(part), normTarget)) {
+            foundInLine = true;
+            return `<span class="word-highlight">${escapeHtml(part)}</span>`;
+          }
+        }
+        return escapeHtml(part);
+      });
+      if (foundInLine) mainHtml = htmlParts.join("");
     }
+
+    if (!foundInLine) continue;
+
+    const prevLine = i > 0 ? lines[i - 1] : "";
+    const nextLine = i < lines.length - 1 ? lines[i + 1] : "";
+
+    // Évite les doublons exacts quand un refrain se répète à l'identique
+    const dedupeKey = normalizeStr(`${prevLine}|${line}|${nextLine}`).replace(/[^a-z0-9|]/g, "");
+    if (seenKeys.has(dedupeKey)) continue;
+    seenKeys.add(dedupeKey);
+
+    // Score de richesse contextuelle pour afficher le meilleur passage en premier
+    const wordCount = line.split(/\s+/).filter(Boolean).length;
+    let score = Math.min(wordCount, 12) * 3;
+    if (wordCount >= 4) score += 20;
+    if (wordCount <= 2) score -= 12;
+    if (prevLine) score += 8;
+    if (nextLine) score += 8;
+    score += Math.min(line.length, 65) * 0.25;
+
+    occurrences.push({ prevLine, mainHtml, nextLine, score });
   }
 
-  return { matched: false, lineHtml: "" };
+  // Trie pour mettre en premier les phrases les plus parlantes
+  occurrences.sort((a, b) => b.score - a.score);
+  return occurrences;
 }
 
-// --- APIs gratuites : iTunes (pochettes + extraits 30s) & LRCLIB (paroles) ---
+function renderLyricBox(quoteEl, occurrences, fallbackHtml) {
+  if (!quoteEl) return;
+
+  if (!occurrences || occurrences.length === 0) {
+    quoteEl.innerHTML = `<div class="lyric-lines"><span class="lyric-main">${fallbackHtml}</span></div>`;
+    return;
+  }
+
+  let currentIndex = 0;
+
+  const drawOccurrence = () => {
+    const occ = occurrences[currentIndex];
+    const total = occurrences.length;
+
+    const prevHtml = occ.prevLine ? `<span class="lyric-context">${escapeHtml(occ.prevLine)}</span>` : "";
+    const mainHtml = `<span class="lyric-main">${occ.mainHtml}</span>`;
+    const nextHtml = occ.nextLine ? `<span class="lyric-context">${escapeHtml(occ.nextLine)}</span>` : "";
+
+    const navHtml =
+      total > 1
+        ? `
+          <div class="lyric-nav" title="Voir une autre occurrence du mot">
+            <button type="button" class="lyric-nav-btn" data-dir="-1" aria-label="Passage précédent">‹</button>
+            <span class="lyric-nav-count">${currentIndex + 1}/${total}</span>
+            <button type="button" class="lyric-nav-btn" data-dir="1" aria-label="Passage suivant">›</button>
+          </div>
+        `
+        : "";
+
+    quoteEl.innerHTML = `
+      <div class="lyric-lines">
+        ${prevHtml}
+        ${mainHtml}
+        ${nextHtml}
+      </div>
+      ${navHtml}
+    `;
+
+    quoteEl.querySelectorAll(".lyric-nav-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const dir = Number(btn.dataset.dir);
+        currentIndex = (currentIndex + dir + total) % total;
+        drawOccurrence();
+      });
+    });
+  };
+
+  drawOccurrence();
+}
+
+// --- APIs gratuites : iTunes (filtré anti-karaoké/covers) & LRCLIB (dédupliqué) ---
+
+const UNWANTED_TRACK_RE = /\b(karaoke|karaoké|tribute|cover|instrumental|lullaby|berceuse|music box|ringtone|backing track|8-bit|made famous|originally performed|in the style of|soundalike|piano version|guitar version|orchestral version|tribute band)\b/i;
+
+function makeSongDedupeKey(title, artist) {
+  const cleanTitle = normalizeStr(title)
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/\s-\s.*$/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+  // Trie les mots du nom d'artiste : "Sardou, Michel" et "Michel Sardou" donnent la même clé
+  const artistTokens = normalizeStr(artist)
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length > 0 && w !== "feat" && w !== "ft" && w !== "et" && w !== "and")
+    .sort()
+    .join(" ");
+
+  return `${cleanTitle}||${artistTokens}`;
+}
 
 async function fetchItunesTrack(title, artist) {
   const key = `${normalizeStr(title)}||${normalizeStr(artist)}`;
   if (itunesCache.has(key)) return itunesCache.get(key);
 
   const query = encodeURIComponent(`${title} ${artist || ""}`.trim());
-  const url = `https://itunes.apple.com/search?term=${query}&media=music&entity=song&country=FR&limit=6`;
+  const url = `https://itunes.apple.com/search?term=${query}&media=music&entity=song&country=FR&limit=12`;
 
   try {
     const res = await fetch(url);
@@ -682,17 +817,52 @@ async function fetchItunesTrack(title, artist) {
 
     const normTitle = normalizeStr(title);
     const normArtist = normalizeStr(artist);
+    const artistTokens = normArtist
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w.length >= 3);
+    const queryWantsSpecial = UNWANTED_TRACK_RE.test(`${title} ${artist}`);
 
-    const best =
-      results.find(
-        (r) =>
-          r.previewUrl &&
-          normalizeStr(r.trackName).includes(normTitle) &&
-          (!normArtist || normalizeStr(r.artistName).includes(normArtist.split(" ")[0]))
-      ) ||
-      results.find((r) => r.previewUrl) ||
-      results[0] ||
-      null;
+    let best = null;
+    let bestScore = -Infinity;
+
+    for (const r of results) {
+      const rTitle = normalizeStr(r.trackName || "");
+      const rArtist = normalizeStr(r.artistName || "");
+      const rAlbum = normalizeStr(r.collectionName || "");
+      const combined = `${r.trackName || ""} ${r.artistName || ""} ${r.collectionName || ""}`;
+
+      let score = 0;
+      if (r.previewUrl) score += 35;
+
+      // Pénalise fortement karaokés, reprises, berceuses et compilations tribute
+      if (!queryWantsSpecial && UNWANTED_TRACK_RE.test(combined)) {
+        score -= 120;
+      }
+
+      if (rTitle === normTitle) score += 45;
+      else if (rTitle.includes(normTitle)) score += 28;
+      else if (normTitle.includes(rTitle) && rTitle.length >= 4) score += 15;
+
+      if (artistTokens.length > 0) {
+        let matchedArtistTokens = 0;
+        for (const tok of artistTokens) {
+          if (rArtist.includes(tok)) matchedArtistTokens += 2;
+          else if (rAlbum.includes(tok)) matchedArtistTokens += 1; // Utile pour Disney / Comédies musicales
+        }
+        score += matchedArtistTokens * 14;
+      }
+
+      if (/\b(live|remix|medley|karaoke)\b/i.test(rTitle) && !/\b(live|remix)\b/i.test(normTitle)) {
+        score -= 18;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = r;
+      }
+    }
 
     const formatted = best
       ? {
@@ -708,6 +878,35 @@ async function fetchItunesTrack(title, artist) {
   } catch (e) {
     itunesCache.set(key, null);
     return null;
+  }
+}
+
+async function searchItunesMultiple(query, limit = 8) {
+  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&country=FR&limit=${limit}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const results = Array.isArray(data.results) ? data.results : [];
+    const seen = new Set();
+    const clean = [];
+
+    for (const r of results) {
+      const combined = `${r.trackName || ""} ${r.artistName || ""} ${r.collectionName || ""}`;
+      if (UNWANTED_TRACK_RE.test(combined)) continue;
+      const dKey = makeSongDedupeKey(r.trackName, r.artistName);
+      if (seen.has(dKey)) continue;
+      seen.add(dKey);
+      clean.push({
+        artwork: r.artworkUrl100 ? r.artworkUrl100.replace("100x100bb", "240x240bb") : null,
+        previewUrl: r.previewUrl || null,
+        trackName: r.trackName || "",
+        artistName: r.artistName || ""
+      });
+    }
+    return clean;
+  } catch (e) {
+    return [];
   }
 }
 
@@ -738,32 +937,92 @@ function getCleanLyricsFromLrcItem(item) {
   return "";
 }
 
-async function fetchLyricQuoteForSong(title, artist, targetWord) {
-  const candidates = await searchLrclib(`${title} ${artist}`);
-  for (const item of candidates.slice(0, 4)) {
+function buildDeduplicatedCandidates(lrcResults, targetWord, maxRaw = 20) {
+  const map = new Map();
+
+  for (const item of lrcResults.slice(0, maxRaw)) {
+    const trackName = (item.trackName || item.name || "").trim();
+    const artistName = (item.artistName || "Artiste inconnu").trim();
+    if (!trackName) continue;
+    if (UNWANTED_TRACK_RE.test(`${trackName} ${artistName}`)) continue;
+
     const lyrics = getCleanLyricsFromLrcItem(item);
-    const check = findMatchingLyricSnippet(lyrics, targetWord);
-    if (check.matched) {
-      return check.lineHtml;
+    const occurrences = findAllMatchingLyricSnippets(lyrics, targetWord);
+    const matched = occurrences.length > 0;
+    const dedupeKey = makeSongDedupeKey(trackName, artistName);
+    const topScore = matched ? occurrences[0].score : 0;
+
+    // Préfère un nom d'artiste sans virgule inversée ("Michel Sardou" > "Sardou, Michel")
+    const nameCleanBonus = artistName.includes(",") ? 0 : 5;
+
+    const existing = map.get(dedupeKey);
+    if (!existing) {
+      map.set(dedupeKey, {
+        trackName,
+        artistName,
+        matched,
+        occurrences,
+        topScore,
+        nameCleanBonus
+      });
+    } else {
+      const isBetter =
+        (matched && !existing.matched) ||
+        (matched === existing.matched && occurrences.length > existing.occurrences.length) ||
+        (matched === existing.matched &&
+          occurrences.length === existing.occurrences.length &&
+          nameCleanBonus > existing.nameCleanBonus);
+      if (isBetter) {
+        map.set(dedupeKey, {
+          trackName,
+          artistName,
+          matched,
+          occurrences,
+          topScore,
+          nameCleanBonus
+        });
+      }
     }
   }
-  return null;
+
+  const list = Array.from(map.values());
+  // Priorité absolue aux titres contenant le mot, puis qualité du passage
+  list.sort((a, b) => {
+    if (a.matched !== b.matched) return a.matched ? -1 : 1;
+    return b.topScore - a.topScore;
+  });
+
+  return list;
+}
+
+async function fetchLyricOccurrencesForSong(title, artist, targetWord) {
+  const candidates = await searchLrclib(`${title} ${artist}`);
+  let bestOccurrences = [];
+  for (const item of candidates.slice(0, 6)) {
+    const lyrics = getCleanLyricsFromLrcItem(item);
+    const occ = findAllMatchingLyricSnippets(lyrics, targetWord);
+    if (occ.length > bestOccurrences.length) {
+      bestOccurrences = occ;
+    }
+  }
+  return bestOccurrences;
 }
 // =========================================================
-// MÉLOMOT — Logique du jeu (Bloc 2/2)
-// Pioche, Animations, Cartes réponses, Vérificateur & Micro
+// MÉLOMOT V1.1 — Logique du jeu (Bloc 2/2)
+// Pioche, Mot perso, Guide, Record, Vérificateur & Micro
 // =========================================================
 
 const DIFF_LABELS = {
   facile: "Facile",
   moyen: "Moyen",
-  difficile: "Difficile"
+  difficile: "Difficile",
+  perso: "Mot perso"
 };
 
 let isTransitioningWord = false;
 let currentWordScored = false;
 
-// --- Gestion de la pioche & des scores ---
+// --- Gestion de la pioche, des scores & du record ---
 
 function getAllWords() {
   return typeof MOTS_DATA !== "undefined" && Array.isArray(MOTS_DATA) ? MOTS_DATA : [];
@@ -785,11 +1044,19 @@ function bumpStat(el) {
   el.classList.add("pop-bump");
 }
 
+function syncRecordUI() {
+  const unit = state.bestStreak > 1 ? "chansons" : "chanson";
+  if (dom.bestStreakVal) dom.bestStreakVal.textContent = String(state.bestStreak);
+  if (dom.bestStreakUnit) dom.bestStreakUnit.textContent = unit;
+  if (dom.helpBestStreak) dom.helpBestStreak.textContent = `${state.bestStreak} ${unit}`;
+}
+
 function updateStatsUI(bumpFound = false, bumpStreak = false) {
   dom.foundCount.textContent = String(state.foundCount);
   dom.streakCount.textContent = String(state.streakCount);
   if (bumpFound) bumpStat(dom.foundCount);
   if (bumpStreak) bumpStat(dom.streakCount);
+  syncRecordUI();
 }
 
 function updateProgressUI() {
@@ -828,7 +1095,11 @@ function setDifficulty(diff, shouldDrawIfStarted = true) {
   updateProgressUI();
 
   if (shouldDrawIfStarted && state.hasStarted) {
-    if (!state.currentWordObj || (diff !== "all" && state.currentWordObj.diff !== diff)) {
+    const mismatch =
+      !state.currentWordObj ||
+      state.currentWordObj.isCustom ||
+      (diff !== "all" && state.currentWordObj.diff !== diff);
+    if (mismatch) {
       drawNextWord();
     }
   }
@@ -846,10 +1117,70 @@ function resetDeckForCurrentDiff() {
   }
 }
 
-// --- Modale de fin de pioche ---
+// --- Panneaux flottants & Modales (Record, Son, Guide, Mot perso, Pioche) ---
+
+function toggleRecordPanel(forceState) {
+  const shouldOpen = typeof forceState === "boolean" ? forceState : dom.recordPanel.hidden;
+  if (shouldOpen) toggleSoundPanel(false);
+  dom.recordPanel.hidden = !shouldOpen;
+  dom.statsPillBtn.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+}
+
+function toggleSoundPanel(forceState) {
+  const shouldOpen = typeof forceState === "boolean" ? forceState : dom.soundPanel.hidden;
+  if (shouldOpen) toggleRecordPanel(false);
+  dom.soundPanel.hidden = !shouldOpen;
+  dom.soundToggleBtn.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+}
+
+function openHelpModal() {
+  toggleSoundPanel(false);
+  toggleRecordPanel(false);
+  syncRecordUI();
+  dom.helpModal.hidden = false;
+}
+
+function closeHelpModal() {
+  dom.helpModal.hidden = true;
+}
+
+function setHelpTab(tabKey) {
+  const idx = dom.helpTabBtns.findIndex((btn) => btn.dataset.tab === tabKey);
+  if (idx < 0) return;
+
+  dom.helpTabBtns.forEach((btn, i) => {
+    const active = i === idx;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
+
+  dom.helpTabIndicator.style.transform = `translateX(${idx * 100}%)`;
+
+  Object.entries(dom.helpTabPanels).forEach(([key, panel]) => {
+    if (!panel) return;
+    const active = key === tabKey;
+    panel.hidden = !active;
+    panel.classList.toggle("is-active", active);
+  });
+}
+
+function openCustomWordModal() {
+  toggleSoundPanel(false);
+  toggleRecordPanel(false);
+  dom.customWordInput.value = "";
+  dom.customWordModal.hidden = false;
+  setTimeout(() => dom.customWordInput.focus(), 60);
+}
+
+function closeCustomWordModal() {
+  dom.customWordModal.hidden = true;
+}
 
 function openDeckModal() {
-  const label = state.currentDiff === "all" ? "toutes les catégories" : `la catégorie « ${DIFF_LABELS[state.currentDiff]} »`;
+  const label =
+    state.currentDiff === "all"
+      ? "toutes les catégories"
+      : `la catégorie « ${DIFF_LABELS[state.currentDiff]} »`;
   dom.modalTitle.textContent = "Pioche terminée !";
   dom.modalSummaryText.textContent = `Vous avez fait le tour de tous les mots de ${label}.`;
   dom.modalAllDiffBtn.hidden = state.currentDiff === "all";
@@ -860,12 +1191,7 @@ function closeDeckModal() {
   dom.deckCompleteModal.hidden = true;
 }
 
-// --- Tirage & animation de la carte mot ---
-
-function closeVerifierPanel() {
-  dom.verifierToggleBtn.setAttribute("aria-expanded", "false");
-  dom.verifierBody.classList.remove("is-open");
-}
+// --- Tirage & affichage d'un mot (aléatoire ou Mot perso) ---
 
 function resetVerifierUI() {
   state.verifyToken++;
@@ -875,6 +1201,70 @@ function resetVerifierUI() {
   dom.verifierResult.innerHTML = "";
   dom.micStatus.hidden = true;
   dom.micStatus.textContent = "";
+}
+
+function presentWordObject(wordObj) {
+  if (isTransitioningWord) return;
+
+  isTransitioningWord = true;
+  currentWordScored = false;
+  state.revealToken++;
+  stopAllAudio();
+  resetVerifierUI();
+
+  dom.answersSection.hidden = true;
+  dom.answersList.innerHTML = "";
+  dom.answersExtraBox.hidden = true;
+  dom.answersExtraBox.innerHTML = "";
+  state.answersRevealed = false;
+
+  const applyNewWord = () => {
+    state.hasStarted = true;
+    state.currentWordObj = wordObj;
+
+    applyRandomPastelTheme();
+    updateProgressUI();
+
+    dom.startActions.hidden = true;
+    dom.playActions.hidden = false;
+    dom.verifierSection.hidden = false;
+    dom.speakWordBtn.hidden = false;
+
+    const badgeDiff = wordObj.isCustom ? "perso" : wordObj.diff;
+    dom.wordDifficultyBadge.textContent = DIFF_LABELS[badgeDiff] || "Mot";
+    dom.wordDifficultyBadge.className = `diff-badge badge-${badgeDiff}`;
+    dom.wordPrompt.textContent = wordObj.isCustom
+      ? "Mot personnalisé — trouve une chanson contenant :"
+      : "Trouve une chanson dont les paroles contiennent :";
+    dom.currentWord.textContent = wordObj.word;
+    dom.wordHint.textContent = "Chantonne un passage à voix haute, ou vérifie un titre juste dessous.";
+
+    dom.btnFound.disabled = false;
+    dom.btnReveal.disabled = false;
+    dom.btnFoundAnyway.disabled = false;
+
+    dom.wordCard.classList.remove("is-exiting", "is-entering", "is-celebrating");
+    void dom.wordCard.offsetWidth;
+    dom.wordCard.classList.add("is-entering");
+
+    dom.currentWord.classList.remove("word-pop");
+    void dom.currentWord.offsetWidth;
+    dom.currentWord.classList.add("word-pop");
+
+    speakWord(wordObj.word);
+
+    setTimeout(() => {
+      dom.wordCard.classList.remove("is-entering");
+      isTransitioningWord = false;
+    }, 520);
+  };
+
+  if (state.hasStarted) {
+    dom.wordCard.classList.add("is-exiting");
+    setTimeout(applyNewWord, 200);
+  } else {
+    applyNewWord();
+  }
 }
 
 function drawNextWord() {
@@ -891,68 +1281,32 @@ function drawNextWord() {
     return;
   }
 
-  isTransitioningWord = true;
-  currentWordScored = false;
-  state.revealToken++;
-  stopAllAudio();
-  resetVerifierUI();
-  closeVerifierPanel();
-
-  dom.answersSection.hidden = true;
-  dom.answersList.innerHTML = "";
-  state.answersRevealed = false;
-
   const nextObj = remaining[Math.floor(Math.random() * remaining.length)];
   state.drawnWords.add(nextObj.word);
   saveDrawnState();
-
-  const applyNewWord = () => {
-    state.hasStarted = true;
-    state.currentWordObj = nextObj;
-
-    applyRandomPastelTheme();
-    updateProgressUI();
-
-    dom.startActions.hidden = true;
-    dom.playActions.hidden = false;
-    dom.verifierSection.hidden = false;
-    dom.speakWordBtn.hidden = false;
-
-    dom.wordDifficultyBadge.textContent = DIFF_LABELS[nextObj.diff] || "Mot";
-    dom.wordDifficultyBadge.className = `diff-badge badge-${nextObj.diff}`;
-    dom.wordPrompt.textContent = "Trouve une chanson dont les paroles contiennent :";
-    dom.currentWord.textContent = nextObj.word;
-    dom.wordHint.textContent = "Chantonne un passage à voix haute, ou vérifie un titre ci-dessous.";
-
-    dom.btnFound.disabled = false;
-    dom.btnReveal.disabled = false;
-    dom.btnFoundAnyway.disabled = false;
-
-    dom.wordCard.classList.remove("is-exiting", "is-entering", "is-celebrating");
-    void dom.wordCard.offsetWidth;
-    dom.wordCard.classList.add("is-entering");
-
-    dom.currentWord.classList.remove("word-pop");
-    void dom.currentWord.offsetWidth;
-    dom.currentWord.classList.add("word-pop");
-
-    speakWord(nextObj.word);
-
-    setTimeout(() => {
-      dom.wordCard.classList.remove("is-entering");
-      isTransitioningWord = false;
-    }, 520);
-  };
-
-  if (state.hasStarted) {
-    dom.wordCard.classList.add("is-exiting");
-    setTimeout(applyNewWord, 200);
-  } else {
-    applyNewWord();
-  }
+  presentWordObject(nextObj);
 }
 
-// --- Actions de validation ("J'ai trouvé" / "Voir les réponses") ---
+function handleCustomWordSubmit(e) {
+  e.preventDefault();
+  const raw = dom.customWordInput.value.trim().replace(/\s+/g, " ");
+  if (!raw) {
+    dom.customWordInput.focus();
+    return;
+  }
+
+  const formattedWord = raw.charAt(0).toUpperCase() + raw.slice(1);
+  closeCustomWordModal();
+
+  presentWordObject({
+    word: formattedWord,
+    diff: "perso",
+    isCustom: true,
+    songs: []
+  });
+}
+
+// --- Actions de validation ("J'ai trouvé !" / "Voir des réponses") ---
 
 function handleWordFound(fromAnswers = false) {
   if (!state.currentWordObj || isTransitioningWord || currentWordScored) return;
@@ -960,6 +1314,14 @@ function handleWordFound(fromAnswers = false) {
   currentWordScored = true;
   state.foundCount += 1;
   state.streakCount += 1;
+
+  let isNewRecord = false;
+  if (state.streakCount > state.bestStreak) {
+    state.bestStreak = state.streakCount;
+    saveBestStreakState();
+    isNewRecord = state.bestStreak >= 3;
+  }
+
   updateStatsUI(true, true);
 
   dom.btnFound.disabled = true;
@@ -972,6 +1334,8 @@ function handleWordFound(fromAnswers = false) {
 
   if (state.streakCount > 0 && state.streakCount % 5 === 0) {
     showToast(`Incroyable ! Série de ${state.streakCount} chansons !`);
+  } else if (isNewRecord) {
+    showToast(`Nouveau record : ${state.bestStreak} chansons d'affilée !`);
   } else if (fromAnswers) {
     showToast("Point validé !");
   }
@@ -981,7 +1345,7 @@ function handleWordFound(fromAnswers = false) {
   }, 460);
 }
 
-function handleRevealAnswers() {
+async function handleRevealAnswers() {
   if (!state.currentWordObj || state.answersRevealed) return;
 
   state.answersRevealed = true;
@@ -991,11 +1355,96 @@ function handleRevealAnswers() {
   dom.btnReveal.disabled = true;
   dom.answersWordLabel.textContent = state.currentWordObj.word;
   dom.answersList.innerHTML = "";
+  dom.answersExtraBox.hidden = true;
+  dom.answersExtraBox.innerHTML = "";
   dom.answersSection.hidden = false;
 
   const token = ++state.revealToken;
   const targetWord = state.currentWordObj.word;
 
+  // Cas 1 : Mot perso -> recherche en direct LRCLIB + iTunes + secours Google Paroles
+  if (state.currentWordObj.isCustom) {
+    dom.answersList.innerHTML = `
+      <div class="verifier-loading">
+        <div class="spinner-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+        <span>Recherche de chansons avec « ${escapeHtml(targetWord)} »...</span>
+      </div>
+    `;
+
+    renderCustomGoogleFallback(targetWord);
+
+    setTimeout(() => {
+      dom.answersSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 100);
+
+    const [lrcResults, itunesList] = await Promise.all([
+      searchLrclib(targetWord),
+      searchItunesMultiple(targetWord, 8)
+    ]);
+
+    if (token !== state.revealToken) return;
+
+    const lrcCandidates = buildDeduplicatedCandidates(lrcResults, targetWord, 20).filter((c) => c.matched);
+    const chosenSongs = [];
+    const seenKeys = new Set();
+
+    for (const c of lrcCandidates) {
+      if (chosenSongs.length >= 3) break;
+      const dKey = makeSongDedupeKey(c.trackName, c.artistName);
+      if (seenKeys.has(dKey)) continue;
+      seenKeys.add(dKey);
+      chosenSongs.push({
+        title: c.trackName,
+        artist: c.artistName,
+        tag: "Détectée dans les paroles",
+        prefetchedOccurrences: c.occurrences,
+        prefetchedItunes: null
+      });
+    }
+
+    for (const it of itunesList) {
+      if (chosenSongs.length >= 3) break;
+      const dKey = makeSongDedupeKey(it.trackName, it.artistName);
+      if (seenKeys.has(dKey)) continue;
+      seenKeys.add(dKey);
+      chosenSongs.push({
+        title: it.trackName,
+        artist: it.artistName,
+        tag: "Titre correspondant",
+        prefetchedOccurrences: null,
+        prefetchedItunes: it
+      });
+    }
+
+    dom.answersList.innerHTML = "";
+
+    if (chosenSongs.length === 0) {
+      dom.answersList.innerHTML = `
+        <div class="verifier-card status-notfound">
+          <span class="verifier-badge">Aucune suggestion automatique</span>
+          <p class="verifier-msg">Aucune chanson francophone n'est remontée automatiquement pour « ${escapeHtml(targetWord)} ». Utilise le bouton Google Paroles juste dessous pour trouver des idées en un clic.</p>
+        </div>
+      `;
+      return;
+    }
+
+    chosenSongs.forEach((song, index) => {
+      const card = buildAnswerCard(song, index, targetWord);
+      dom.answersList.appendChild(card);
+      hydrateTrackCard(
+        card,
+        song.title,
+        song.artist,
+        targetWord,
+        token,
+        song.prefetchedOccurrences,
+        song.prefetchedItunes
+      );
+    });
+    return;
+  }
+
+  // Cas 2 : Mot issu de la base mots.js
   state.currentWordObj.songs.forEach((song, index) => {
     const card = buildAnswerCard(song, index, targetWord);
     dom.answersList.appendChild(card);
@@ -1005,6 +1454,17 @@ function handleRevealAnswers() {
   setTimeout(() => {
     dom.answersSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, 100);
+}
+
+function renderCustomGoogleFallback(targetWord) {
+  const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(`"${targetWord}" paroles chanson`)}`;
+  dom.answersExtraBox.innerHTML = `
+    <span class="answers-extra-text">Envie de plus d'idées de chansons contenant « <strong>${escapeHtml(targetWord)}</strong> » dans leurs paroles ?</span>
+    <a class="btn btn-secondary btn-compact" href="${googleUrl}" target="_blank" rel="noopener noreferrer">
+      <span>Chercher dans les paroles (Google)</span>
+    </a>
+  `;
+  dom.answersExtraBox.hidden = false;
 }
 
 // --- Construction & enrichissement des cartes chanson ---
@@ -1038,7 +1498,11 @@ function buildAnswerCard(song, index, targetWord) {
       </div>
       <div class="eq-bars" aria-hidden="true"><span></span><span></span><span></span></div>
     </div>
-    <div class="lyric-quote">Recherche du passage contenant « <span class="word-highlight">${escapeHtml(targetWord)}</span> »...</div>
+    <div class="lyric-quote">
+      <div class="lyric-lines">
+        <span class="lyric-context">Recherche du passage contenant « <span class="word-highlight">${escapeHtml(targetWord)}</span> »...</span>
+      </div>
+    </div>
     <div class="audio-controls-row">
       <div class="audio-player-main">
         <button type="button" class="play-pill-btn" disabled>${getPlayIconSvg()}<span>Chargement...</span></button>
@@ -1103,10 +1567,18 @@ function wireAudioToCard(card, itunesTrack) {
   }
 }
 
-async function hydrateTrackCard(card, title, artist, targetWord, token) {
-  const [itunesTrack, lyricHtml] = await Promise.all([
-    fetchItunesTrack(title, artist),
-    fetchLyricQuoteForSong(title, artist, targetWord)
+async function hydrateTrackCard(
+  card,
+  title,
+  artist,
+  targetWord,
+  token,
+  prefetchedOccurrences = null,
+  prefetchedItunes = null
+) {
+  const [itunesTrack, occurrences] = await Promise.all([
+    prefetchedItunes ? Promise.resolve(prefetchedItunes) : fetchItunesTrack(title, artist),
+    prefetchedOccurrences ? Promise.resolve(prefetchedOccurrences) : fetchLyricOccurrencesForSong(title, artist, targetWord)
   ]);
 
   if (token !== state.revealToken) return;
@@ -1114,16 +1586,11 @@ async function hydrateTrackCard(card, title, artist, targetWord, token) {
   wireAudioToCard(card, itunesTrack);
 
   const quoteEl = card.querySelector(".lyric-quote");
-  if (quoteEl) {
-    if (lyricHtml) {
-      quoteEl.innerHTML = lyricHtml;
-    } else {
-      quoteEl.innerHTML = `Parole à retrouver en écoutant le morceau (mot : <span class="word-highlight">${escapeHtml(targetWord)}</span>).`;
-    }
-  }
+  const fallbackHtml = `Parole à retrouver en écoutant le morceau (mot : <span class="word-highlight">${escapeHtml(targetWord)}</span>).`;
+  renderLyricBox(quoteEl, occurrences, fallbackHtml);
 }
 
-// --- Vérificateur intelligent (LRCLIB + iTunes + Dictée vocale) ---
+// --- Vérificateur intelligent (Dédupliqué + Pastilles verte/orange + 3 lignes) ---
 
 async function handleVerifySubmit(e) {
   if (e) e.preventDefault();
@@ -1152,29 +1619,17 @@ async function handleVerifySubmit(e) {
     const results = await searchLrclib(query);
     if (token !== state.verifyToken) return;
 
-    if (results.length === 0) {
+    const candidates = buildDeduplicatedCandidates(results, targetWord, 20);
+
+    if (candidates.length === 0) {
       const itunesFallback = await fetchItunesTrack(query, "");
       if (token !== state.verifyToken) return;
       renderVerifierNotFound(query, targetWord, itunesFallback);
       return;
     }
 
-    const candidates = results.slice(0, 6).map((item) => {
-      const lyrics = getCleanLyricsFromLrcItem(item);
-      const check = findMatchingLyricSnippet(lyrics, targetWord);
-      return {
-        trackName: item.trackName || item.name || query,
-        artistName: item.artistName || "Artiste inconnu",
-        matched: check.matched,
-        lineHtml: check.lineHtml
-      };
-    });
-
-    // Priorise la première chanson dont les paroles contiennent bien le mot
-    const firstMatchIdx = candidates.findIndex((c) => c.matched);
-    const selectedIdx = firstMatchIdx >= 0 ? firstMatchIdx : 0;
-
-    await renderVerifierCandidate(candidates, selectedIdx, targetWord, token);
+    // candidates[0] est toujours un titre contenant le mot s'il en existe au moins un
+    await renderVerifierCandidate(candidates, 0, targetWord, token);
   } catch (err) {
     if (token !== state.verifyToken) return;
     renderVerifierNotFound(query, targetWord, null);
@@ -1196,18 +1651,39 @@ async function renderVerifierCandidate(candidates, selectedIdx, targetWord, toke
   card.className = `verifier-card ${statusClass}`;
 
   const quoteBlock = chosen.matched
-    ? `<div class="lyric-quote">${chosen.lineHtml}</div>`
-    : `<p class="verifier-msg">Le mot exact n'a pas été trouvé dans le texte récupéré. Tu peux tester un autre résultat ci-dessous ou valider si tu sais qu'il y figure.</p>`;
+    ? `<div class="lyric-quote"></div>`
+    : `<p class="verifier-msg">Le mot exact n'a pas été détecté dans le texte récupéré. Tu peux tester une autre chanson ci-dessous ou valider si tu sais qu'il y figure.</p>`;
+
+  // Jusqu'à 4 autres chansons distinctes : pastilles vertes en premier, complétées par orange si besoin
+  const otherCandidates = candidates
+    .map((c, i) => ({ ...c, origIdx: i }))
+    .filter((c) => c.origIdx !== selectedIdx)
+    .slice(0, 4);
 
   const otherButtonsHtml =
-    candidates.length > 1
-      ? `<div class="candidate-list">${candidates
-          .map((c, i) =>
-            i === selectedIdx
-              ? ""
-              : `<button type="button" class="candidate-btn" data-idx="${i}">${escapeHtml(c.trackName)} — ${escapeHtml(c.artistName)}</button>`
-          )
-          .join("")}</div>`
+    otherCandidates.length > 0
+      ? `
+        <div class="candidate-block">
+          <span class="candidate-label">Autres chansons trouvées :</span>
+          <div class="candidate-list">
+            ${otherCandidates
+              .map(
+                (c) => `
+                  <button
+                    type="button"
+                    class="candidate-btn"
+                    data-idx="${c.origIdx}"
+                    title="${c.matched ? "Mot détecté dans les paroles" : "Mot non détecté dans les paroles"}"
+                  >
+                    <span class="cand-dot ${c.matched ? "is-match" : "is-nomatch"}" aria-hidden="true"></span>
+                    <span class="cand-text">${escapeHtml(c.trackName)} — ${escapeHtml(c.artistName)}</span>
+                  </button>
+                `
+              )
+              .join("")}
+          </div>
+        </div>
+      `
       : "";
 
   const actionButtonsHtml = chosen.matched
@@ -1246,6 +1722,11 @@ async function renderVerifierCandidate(candidates, selectedIdx, targetWord, toke
   dom.verifierResult.innerHTML = "";
   dom.verifierResult.appendChild(card);
 
+  if (chosen.matched) {
+    const quoteEl = card.querySelector(".lyric-quote");
+    renderLyricBox(quoteEl, chosen.occurrences, "");
+  }
+
   const validateBtn = card.querySelector('[data-action="validate"]');
   if (validateBtn) {
     validateBtn.addEventListener("click", () => handleWordFound(false));
@@ -1254,8 +1735,9 @@ async function renderVerifierCandidate(candidates, selectedIdx, targetWord, toke
   card.querySelectorAll(".candidate-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const nextIdx = Number(btn.dataset.idx);
+      const nextToken = ++state.verifyToken;
       stopAllAudio();
-      renderVerifierCandidate(candidates, nextIdx, targetWord, token);
+      renderVerifierCandidate(candidates, nextIdx, targetWord, nextToken);
     });
   });
 
@@ -1412,16 +1894,27 @@ function toggleDictation() {
   }
 }
 
-// --- Panneau audio & événements globaux ---
-
-function toggleSoundPanel(forceState) {
-  const shouldOpen = typeof forceState === "boolean" ? forceState : dom.soundPanel.hidden;
-  dom.soundPanel.hidden = !shouldOpen;
-  dom.soundToggleBtn.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
-}
+// --- Événements globaux ---
 
 function bindEvents() {
   window.addEventListener("resize", resizeFxCanvas);
+
+  // Record au clic sur les stats
+  dom.statsPillBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleRecordPanel();
+  });
+
+  // Notice / Guide (3 onglets)
+  dom.helpToggleBtn.addEventListener("click", openHelpModal);
+  dom.closeHelpModalBtn.addEventListener("click", closeHelpModal);
+  dom.helpOkBtn.addEventListener("click", closeHelpModal);
+  dom.helpModal.addEventListener("click", (e) => {
+    if (e.target === dom.helpModal) closeHelpModal();
+  });
+  dom.helpTabBtns.forEach((btn) => {
+    btn.addEventListener("click", () => setHelpTab(btn.dataset.tab));
+  });
 
   // Panneau audio
   dom.soundToggleBtn.addEventListener("click", (e) => {
@@ -1435,11 +1928,17 @@ function bindEvents() {
     if (!dom.soundPanel.hidden && !dom.soundPanel.contains(e.target) && !dom.soundToggleBtn.contains(e.target)) {
       toggleSoundPanel(false);
     }
+    if (!dom.recordPanel.hidden && !dom.recordPanel.contains(e.target) && !dom.statsPillBtn.contains(e.target)) {
+      toggleRecordPanel(false);
+    }
   });
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       if (!dom.soundPanel.hidden) toggleSoundPanel(false);
+      if (!dom.recordPanel.hidden) toggleRecordPanel(false);
+      if (!dom.helpModal.hidden) closeHelpModal();
+      if (!dom.customWordModal.hidden) closeCustomWordModal();
       if (!dom.deckCompleteModal.hidden) closeDeckModal();
     }
   });
@@ -1471,9 +1970,17 @@ function bindEvents() {
     saveSoundState();
   });
 
-  // Difficulté & pioche
+  // Difficulté, Mot perso & pioche
   dom.diffBtns.forEach((btn) => {
     btn.addEventListener("click", () => setDifficulty(btn.dataset.diff, true));
+  });
+
+  dom.customWordBtn.addEventListener("click", openCustomWordModal);
+  dom.closeCustomWordModalBtn.addEventListener("click", closeCustomWordModal);
+  dom.cancelCustomWordBtn.addEventListener("click", closeCustomWordModal);
+  dom.customWordForm.addEventListener("submit", handleCustomWordSubmit);
+  dom.customWordModal.addEventListener("click", (e) => {
+    if (e.target === dom.customWordModal) closeCustomWordModal();
   });
 
   dom.resetDeckBtn.addEventListener("click", resetDeckForCurrentDiff);
@@ -1491,16 +1998,6 @@ function bindEvents() {
   dom.btnNextWord.addEventListener("click", drawNextWord);
 
   // Vérificateur
-  dom.verifierToggleBtn.addEventListener("click", () => {
-    const isOpen = dom.verifierBody.classList.toggle("is-open");
-    dom.verifierToggleBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
-    if (isOpen) {
-      setTimeout(() => dom.verifierInput.focus(), 220);
-    } else {
-      stopDictation();
-    }
-  });
-
   dom.verifierForm.addEventListener("submit", handleVerifySubmit);
 
   dom.verifierInput.addEventListener("input", () => {
@@ -1538,9 +2035,9 @@ function init() {
   bindEvents();
   resizeFxCanvas();
   setDifficulty("all", false);
+  setHelpTab("rules");
   updateStatsUI();
 
-  // Précharge la liste des voix sur les navigateurs qui la chargent en asynchrone
   if ("speechSynthesis" in window && typeof window.speechSynthesis.onvoiceschanged !== "undefined") {
     window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
   }
